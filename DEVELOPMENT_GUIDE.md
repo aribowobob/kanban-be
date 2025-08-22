@@ -2,11 +2,121 @@
 
 ## Table of Contents
 
-1. [SQLx Database Query Guidelines](#sqlx-database-query-guidelines)
-2. [Docker Build Best Practices](#docker-build-best-practices)
-3. [CI/CD Guidelines](#cicd-guidelines)
-4. [Code Generation with AI](#code-generation-with-ai)
-5. [Error Handling Patterns](#error-handling-patterns)
+1. [API Response Format](#api-response-format)
+2. [SQLx Database Query Guidelines](#sqlx-database-query-guidelines)
+3. [Docker Build Best Practices](#docker-build-best-practices)
+4. [CI/CD Guidelines](#cicd-guidelines)
+5. [Code Generation with AI](#code-generation-with-ai)
+6. [Error Handling Patterns](#error-handling-patterns)
+
+## API Response Format
+
+### Standardized Response Structure
+
+All API endpoints must follow this standardized response format for consistency:
+
+```json
+{
+  "status": "success" | "error",
+  "message": "Human readable message",
+  "data": Object | Array | Boolean | null
+}
+```
+
+### Success Response Guidelines
+
+#### 1. Object Response (Single Resource)
+
+```json
+{
+  "status": "success",
+  "message": "Successfully retrieved user data",
+  "data": {
+    "id": 1,
+    "username": "john_doe",
+    "name": "John Doe",
+    "created_at": "2025-08-22T09:42:10.264443Z",
+    "updated_at": "2025-08-22T09:42:10.264443Z"
+  }
+}
+```
+
+**When resource not found:**
+
+```json
+{
+  "status": "success",
+  "message": "No user found",
+  "data": null
+}
+```
+
+#### 2. Array Response (Multiple Resources)
+
+```json
+{
+  "status": "success",
+  "message": "Successfully retrieved tasks",
+  "data": [
+    { "id": 1, "title": "Task 1" },
+    { "id": 2, "title": "Task 2" }
+  ]
+}
+```
+
+**When no items found:**
+
+```json
+{
+  "status": "success",
+  "message": "No tasks found",
+  "data": []
+}
+```
+
+#### 3. Boolean Response (Action Confirmation)
+
+```json
+{
+  "status": "success",
+  "message": "Successfully logout from the system",
+  "data": true
+}
+```
+
+### Error Response Guidelines
+
+Error responses should only contain `status` and `message`:
+
+```json
+{
+  "status": "error",
+  "message": "Invalid credentials"
+}
+```
+
+### Implementation in Rust
+
+Use the `ApiResponse<T>` struct for all success responses:
+
+```rust
+use crate::models::auth::ApiResponse;
+
+// For object responses
+Ok(HttpResponse::Ok().json(ApiResponse::success("User retrieved", user_data)))
+
+// For array responses
+Ok(HttpResponse::Ok().json(ApiResponse::success("Tasks retrieved", tasks_list)))
+
+// For boolean responses
+Ok(HttpResponse::Ok().json(ApiResponse::success("Operation completed", true)))
+```
+
+### Current Endpoints
+
+- **POST /api/auth/login** - Returns login data with token and user object
+- **POST /api/auth/logout** - Returns boolean confirmation
+- **GET /api/auth/me** - Returns user object or null if not found
 
 ## SQLx Database Query Guidelines
 
@@ -232,3 +342,323 @@ If you encounter "set `DATABASE_URL` to use query macros online" error:
 5. **Deploy**: Push the changes
 
 Remember: **Always prefer runtime queries over compile-time queries** for this project to maintain CI/CD compatibility.
+
+---
+
+## 🔧 API Endpoints Documentation
+
+All endpoints follow a standardized response format for consistency and better frontend integration.
+
+### Response Format
+
+All API responses follow this consistent structure:
+
+```json
+{
+  "status": "success" | "error",
+  "message": "Human-readable message",
+  "data": T | null  // The actual response data, type varies by endpoint
+}
+```
+
+#### Success Response Example:
+
+```json
+{
+  "status": "success",
+  "message": "User retrieved successfully",
+  "data": {
+    "id": 1,
+    "username": "admin",
+    "name": "Administrator"
+  }
+}
+```
+
+#### Error Response Example:
+
+```json
+{
+  "status": "error",
+  "message": "Invalid credentials",
+  "data": null
+}
+```
+
+### Authentication Endpoints
+
+#### POST `/api/auth/login`
+
+Login with username and password
+
+**Request:**
+
+```json
+{
+  "username": "admin",
+  "password": "admin123"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Login successful",
+  "data": {
+    "token": "eyJ0eXAiOiJKV1Q...",
+    "user": {
+      "id": 2,
+      "username": "admin",
+      "name": "Administrator",
+      "created_at": "2025-08-22T09:42:10.264443Z",
+      "updated_at": "2025-08-22T09:42:10.264443Z"
+    }
+  }
+}
+```
+
+#### POST `/api/auth/logout`
+
+Logout (invalidate token)
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Logout successful",
+  "data": true
+}
+```
+
+#### GET `/api/auth/me`
+
+Get current user information
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "User retrieved successfully",
+  "data": {
+    "id": 2,
+    "username": "admin",
+    "name": "Administrator",
+    "created_at": "2025-08-22T09:42:10.264443Z",
+    "updated_at": "2025-08-22T09:42:10.264443Z"
+  }
+}
+```
+
+### Task Management Endpoints
+
+All task endpoints require authentication via Bearer token in the Authorization header.
+
+#### GET `/api/tasks`
+
+Get all tasks
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Tasks retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "name": "Implement Login Form",
+      "description": "Create a responsive login form with validation and error handling",
+      "status": "DOING",
+      "external_link": "https://github.com/project/issues/1",
+      "created_by": 2,
+      "teams": ["Frontend", "QA"],
+      "created_at": "2025-08-22T11:21:12.440982Z",
+      "updated_at": "2025-08-22T11:21:48.575477Z"
+    }
+  ]
+}
+```
+
+#### GET `/api/tasks/{id}`
+
+Get a specific task by ID
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Task retrieved successfully",
+  "data": {
+    "id": 1,
+    "name": "Implement Login Form",
+    "description": "Create a responsive login form with validation and error handling",
+    "status": "DOING",
+    "external_link": "https://github.com/project/issues/1",
+    "created_by": 2,
+    "teams": ["Frontend", "QA"],
+    "created_at": "2025-08-22T11:21:12.440982Z",
+    "updated_at": "2025-08-22T11:21:48.575477Z"
+  }
+}
+```
+
+#### POST `/api/tasks`
+
+Create a new task
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+
+```json
+{
+  "name": "Implement Login Form",
+  "description": "Create a responsive login form with validation and error handling",
+  "status": "TO_DO",
+  "teams": ["Frontend"],
+  "external_link": "https://github.com/project/issues/1"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Task created successfully",
+  "data": {
+    "id": 1,
+    "name": "Implement Login Form",
+    "description": "Create a responsive login form with validation and error handling",
+    "status": "TO_DO",
+    "external_link": "https://github.com/project/issues/1",
+    "created_by": 2,
+    "teams": ["Frontend"],
+    "created_at": "2025-08-22T11:21:12.440982Z",
+    "updated_at": "2025-08-22T11:21:12.440982Z"
+  }
+}
+```
+
+#### PUT `/api/tasks/{id}`
+
+Update an existing task
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request (all fields optional):**
+
+```json
+{
+  "name": "Updated Task Name",
+  "description": "Updated description",
+  "status": "DOING",
+  "teams": ["Frontend", "QA"],
+  "external_link": "https://github.com/project/issues/1"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Task updated successfully",
+  "data": {
+    "id": 1,
+    "name": "Updated Task Name",
+    "description": "Updated description",
+    "status": "DOING",
+    "external_link": "https://github.com/project/issues/1",
+    "created_by": 2,
+    "teams": ["Frontend", "QA"],
+    "created_at": "2025-08-22T11:21:12.440982Z",
+    "updated_at": "2025-08-22T11:21:48.575477Z"
+  }
+}
+```
+
+#### DELETE `/api/tasks/{id}`
+
+Delete a task
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Task deleted successfully",
+  "data": true
+}
+```
+
+### Team Management Endpoints
+
+#### GET `/api/teams`
+
+Get all available teams
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Teams retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "name": "Frontend",
+      "created_at": "2025-08-22T11:11:18.023216Z"
+    },
+    {
+      "id": 2,
+      "name": "Backend",
+      "created_at": "2025-08-22T11:11:18.023216Z"
+    }
+  ]
+}
+```
+
+### Task Status Values
+
+Tasks can have one of the following status values:
+
+- `TO_DO` - Task is not started
+- `DOING` - Task is in progress
+- `DONE` - Task is completed
+
+### Error Handling
+
+All endpoints return appropriate HTTP status codes:
+
+- `200` - Success
+- `201` - Created
+- `400` - Bad Request (validation errors)
+- `401` - Unauthorized (invalid/missing token)
+- `404` - Not Found
+- `500` - Internal Server Error
+
+Error responses follow the same format:
+
+```json
+{
+  "status": "error",
+  "message": "Detailed error message",
+  "data": null
+}
+```

@@ -15,7 +15,7 @@ mod utils;
 
 use config::AppConfig;
 use database::Database;
-use handlers::auth_config;
+use handlers::{auth_config, task_config, file_config};
 
 struct SecurityAddon;
 
@@ -36,6 +36,16 @@ impl Modify for SecurityAddon {
         handlers::auth::login,
         handlers::auth::logout,
         handlers::auth::get_me,
+        handlers::task::create_task,
+        handlers::task::get_tasks,
+        handlers::task::get_task,
+        handlers::task::update_task,
+        handlers::task::delete_task,
+        handlers::task::get_teams,
+        handlers::file::upload_file,
+        handlers::file::get_task_attachments,
+        handlers::file::download_file,
+        handlers::file::delete_attachment,
     ),
     components(
         schemas(
@@ -46,12 +56,30 @@ impl Modify for SecurityAddon {
             models::auth::ApiResponse<models::auth::UserResponse>,
             models::auth::ApiResponse<bool>,
             models::auth::ErrorResponse,
+            models::task::Task,
+            models::task::TaskResponse,
+            models::task::CreateTaskRequest,
+            models::task::UpdateTaskRequest,
+            models::task::Team,
+            models::auth::ApiResponse<models::task::TaskResponse>,
+            models::auth::ApiResponse<Vec<models::task::TaskResponse>>,
+            models::auth::ApiResponse<Vec<models::task::Team>>,
+            models::file::TaskAttachment,
+            models::file::AttachmentResponse,
+            models::file::UploadResponse,
+            models::file::FileUploadInfo,
+            models::file::TaskAttachmentSimple,
+            models::auth::ApiResponse<models::file::UploadResponse>,
+            models::auth::ApiResponse<Vec<models::file::AttachmentResponse>>,
             utils::errors::ServiceError
         )
     ),
     modifiers(&SecurityAddon),
     tags(
-        (name = "auth", description = "Authentication endpoints")
+        (name = "auth", description = "Authentication endpoints"),
+        (name = "tasks", description = "Task management endpoints"),
+        (name = "teams", description = "Team management endpoints"),
+        (name = "attachments", description = "File attachment endpoints")
     ),
     info(
         title = "Kanban Backend API",
@@ -131,7 +159,6 @@ async fn main() -> std::io::Result<()> {
     }
 
     println!("🚀 Starting Kanban Backend API on port {}", config.port);
-    println!("📋 Allowed frontend URLs: {:?}", config.frontend_urls);
     println!("🔧 Environment: {}", config.environment);
     
     if config.is_development() {
@@ -166,6 +193,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .route("/health", web::get().to(health_check))
             .configure(auth_config)
+            .configure(task_config)
+            .configure(file_config)
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
                     .url("/api-docs/openapi.json", ApiDoc::openapi())

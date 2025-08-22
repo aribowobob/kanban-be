@@ -48,7 +48,7 @@ pub async fn login(
 
     // Query user from database
     let user_row = sqlx::query(
-        "SELECT id, username, name, password_hash, created_at, updated_at FROM users WHERE username = $1"
+        "SELECT id, username, name, password, created_at, updated_at FROM users WHERE username = $1"
     )
     .bind(&login_req.username)
     .fetch_optional(&db.pool)
@@ -67,7 +67,7 @@ pub async fn login(
     };
 
     // Verify password
-    let stored_hash: String = user_row.get("password_hash");
+    let stored_hash: String = user_row.get("password");
     let password_valid = verify(&login_req.password, &stored_hash)
         .map_err(|e| {
             log::error!("Password verification error: {}", e);

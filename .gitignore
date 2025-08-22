@@ -32,6 +32,11 @@ Thumbs.db
 *.pem
 *.key
 
+# Log files
+*.log
+server.log
+nohup.out
+
 # Db files
 # *.sql
 

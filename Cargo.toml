@@ -2,7 +2,7 @@
 name = "kanban-be"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Susetyo Aribowo <aribowo.susetyo@gmail.com>"]
 description = "A kanban board backend system built with Rust and Actix-web"
 
 [dependencies]
@@ -10,6 +10,7 @@ description = "A kanban board backend system built with Rust and Actix-web"
 actix-web = "4.8"
 actix-cors = "0.7"
 actix-web-httpauth = "0.8"
+actix-multipart = "0.7"
 
 # Async runtime
 tokio = { version = "1.41", features = ["full"] }
@@ -45,6 +46,7 @@ reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
 # File handling
 mime = "0.3"
 uuid = { version = "1.10", features = ["v4", "serde"] }
+futures-util = "0.3"
 
 # Validation
 validator = { version = "0.18", features = ["derive"] }

@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -90,7 +90,7 @@ CREATE TRIGGER update_tasks_updated_at
 
 -- Insert a default admin user for testing (password: 'admin123')
 -- Note: This is a bcrypt hash of 'admin123' - change this in production!
-INSERT INTO users (username, password_hash, name) VALUES 
+INSERT INTO users (username, password, name) VALUES 
     ('admin', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj8LhQnE.K6W', 'Administrator');
 
 -- Insert some sample tasks for testing (optional - remove in production)
