@@ -1,12 +1,69 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Result, middleware::Logger};
 use actix_cors::Cors;
 use env_logger;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+use utoipa::{Modify, openapi::security::{SecurityScheme, HttpAuthScheme, Http}};
 
 mod config;
 mod database;
+mod models;
+mod services;
+mod handlers;
+mod middleware;
+mod utils;
 
 use config::AppConfig;
 use database::Database;
+use handlers::auth_config;
+
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                SecurityScheme::Http(Http::new(HttpAuthScheme::Bearer))
+            )
+        }
+    }
+}
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        handlers::auth::login,
+        handlers::auth::logout,
+        handlers::auth::get_me,
+    ),
+    components(
+        schemas(
+            models::auth::LoginRequest,
+            models::auth::LoginResponseData,
+            models::auth::UserResponse,
+            models::auth::ApiResponse<models::auth::LoginResponseData>,
+            models::auth::ApiResponse<models::auth::UserResponse>,
+            models::auth::ApiResponse<bool>,
+            models::auth::ErrorResponse,
+            utils::errors::ServiceError
+        )
+    ),
+    modifiers(&SecurityAddon),
+    tags(
+        (name = "auth", description = "Authentication endpoints")
+    ),
+    info(
+        title = "Kanban Backend API",
+        version = "0.1.0",
+        description = "REST API for Kanban board application with JWT authentication",
+        contact(
+            name = "API Support",
+            email = "admin@kanban.com"
+        )
+    )
+)]
+struct ApiDoc;
 
 // Basic health check endpoint
 async fn health_check(db: web::Data<Database>) -> Result<HttpResponse> {
@@ -43,21 +100,6 @@ async fn health_check(db: web::Data<Database>) -> Result<HttpResponse> {
 }
 
 // API info endpoint
-async fn api_info(config: web::Data<AppConfig>) -> Result<HttpResponse> {
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "name": "Kanban Backend API",
-        "version": "0.1.0",
-        "description": "REST API for Kanban board application",
-        "environment": config.environment,
-        "features": {
-            "database": "PostgreSQL",
-            "authentication": "JWT",
-            "file_upload": if config.has_cloudinary_config() { "Cloudinary" } else { "Not configured" },
-            "documentation": if config.is_development() { "Swagger UI available at /swagger-ui/" } else { "Available in development mode" }
-        }
-    })))
-}
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Initialize logger
@@ -66,9 +108,6 @@ async fn main() -> std::io::Result<()> {
     // Load and validate configuration
     let config = AppConfig::from_env()
         .expect("Failed to load configuration");
-    
-    config.validate()
-        .expect("Configuration validation failed");
 
     // Create database connection
     let database = Database::new(&config.database_url)
@@ -96,7 +135,7 @@ async fn main() -> std::io::Result<()> {
     println!("🔧 Environment: {}", config.environment);
     
     if config.is_development() {
-        println!("📖 Swagger UI will be available at: http://localhost:{}/swagger-ui/", config.port);
+        println!("📖 Swagger UI available at: http://localhost:{}/swagger-ui/", config.port);
     }
 
     let port = config.port;
@@ -126,7 +165,11 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(Logger::default())
             .route("/health", web::get().to(health_check))
-            .route("/", web::get().to(api_info))
+            .configure(auth_config)
+            .service(
+                SwaggerUi::new("/swagger-ui/{_:.*}")
+                    .url("/api-docs/openapi.json", ApiDoc::openapi())
+            )
     })
     .bind(format!("0.0.0.0:{}", port))?
     .run()

@@ -9,6 +9,7 @@ description = "A kanban board backend system built with Rust and Actix-web"
 # Web framework
 actix-web = "4.8"
 actix-cors = "0.7"
+actix-web-httpauth = "0.8"
 
 # Async runtime
 tokio = { version = "1.41", features = ["full"] }
