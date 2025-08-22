@@ -46,3 +46,9 @@ pub struct TaskAttachmentSimple {
     pub name: String,
     pub url: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UploadFileRequest {
+    #[schema(format = "binary")]
+    pub file: String,
+}

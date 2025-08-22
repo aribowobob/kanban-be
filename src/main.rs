@@ -69,6 +69,7 @@ impl Modify for SecurityAddon {
             models::file::UploadResponse,
             models::file::FileUploadInfo,
             models::file::TaskAttachmentSimple,
+            models::file::UploadFileRequest,
             models::auth::ApiResponse<models::file::UploadResponse>,
             models::auth::ApiResponse<Vec<models::file::AttachmentResponse>>,
             utils::errors::ServiceError

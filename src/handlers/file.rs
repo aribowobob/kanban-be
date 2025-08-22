@@ -11,7 +11,7 @@ use serde::{Serialize, Deserialize};
 use crate::config::AppConfig;
 use crate::Database;
 use crate::models::auth::ApiResponse;
-use crate::models::file::{AttachmentResponse, UploadResponse};
+use crate::models::file::{AttachmentResponse, UploadResponse, UploadFileRequest};
 use crate::utils::errors::ServiceError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,7 +120,11 @@ fn validate_file(file_name: &str, file_size: usize) -> Result<String, ServiceErr
     params(
         ("task_id" = i32, Path, description = "Task ID to attach file to")
     ),
-    request_body(content_type = "multipart/form-data"),
+    request_body(
+        content = inline(UploadFileRequest),
+        description = "File to upload as multipart/form-data",
+        content_type = "multipart/form-data"
+    ),
     responses(
         (status = 201, description = "File uploaded successfully", body = ApiResponse<UploadResponse>),
         (status = 400, description = "Validation error", body = crate::utils::errors::ServiceError),
