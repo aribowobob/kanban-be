@@ -1,0 +1,58 @@
+# Build artifacts
+
+target/
+Cargo.lock
+
+# Git
+
+.git/
+.gitignore
+
+# Environment files
+
+.env
+.env.\*
+!.env.example
+
+# Documentation
+
+\*.md
+!README.md
+
+# IDE and editor files
+
+.vscode/
+.idea/
+_.swp
+_.swo
+\*~
+
+# OS generated files
+
+.DS*Store
+.DS_Store?
+.*\*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+
+\*.log
+logs/
+
+# Test files
+
+test\__.sh
+test-_.txt
+
+# Uploads directory (will be created in container)
+
+uploads/
+
+# Docker files (not needed in image)
+
+Dockerfile
+docker-compose\*.yml
+.dockerignore

@@ -1,0 +1,194 @@
+name: Production Deployment
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  DOCKER_IMAGE: aribowobob/kanban-be
+  DROPLET_IP: ${{ vars.DROPLET_IP }}
+
+jobs:
+  check-secrets:
+    name: Check Required Secrets
+    runs-on: ubuntu-latest
+    outputs:
+      secrets-valid: ${{ steps.validate.outputs.valid }}
+    steps:
+      - name: Validate Required Secrets
+        id: validate
+        run: |
+          echo "Checking required secrets..."
+
+          missing_secrets=""
+
+          if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then
+            missing_secrets="$missing_secrets DOCKER_USERNAME"
+          fi
+
+          if [ -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
+            missing_secrets="$missing_secrets DOCKER_PASSWORD"
+          fi
+
+          if [ -z "${{ vars.DROPLET_IP }}" ]; then
+            missing_secrets="$missing_secrets DROPLET_IP"
+          fi
+
+          if [ -z "${{ secrets.DATABASE_URL }}" ]; then
+            missing_secrets="$missing_secrets DATABASE_URL"
+          fi
+
+          if [ -z "${{ secrets.JWT_SECRET }}" ]; then
+            missing_secrets="$missing_secrets JWT_SECRET"
+          fi
+
+          if [ -z "${{ secrets.DROPLET_SSH_KEY }}" ]; then
+            missing_secrets="$missing_secrets DROPLET_SSH_KEY"
+          fi
+
+          if [ -n "$missing_secrets" ]; then
+            echo "::error::Missing required secrets/variables:$missing_secrets"
+            echo "valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "All required secrets are available."
+          echo "valid=true" >> $GITHUB_OUTPUT
+
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: check-secrets
+    if: needs.check-secrets.outputs.secrets-valid == 'true'
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  deploy:
+    name: Deploy to Digital Ocean
+    needs: [check-secrets, build-and-push]
+    runs-on: ubuntu-latest
+    if: needs.check-secrets.outputs.secrets-valid == 'true'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.DROPLET_IP }} >> ~/.ssh/known_hosts
+
+      - name: Test SSH Connection
+        run: |
+          ssh -o ConnectTimeout=30 root@${{ env.DROPLET_IP }} "echo 'SSH connection successful!'"
+
+      - name: Create Deployment Directory
+        run: |
+          ssh root@${{ env.DROPLET_IP }} "mkdir -p /opt/kanban-app"
+
+      - name: Copy Application Files
+        run: |
+          scp docker-compose.yml root@${{ env.DROPLET_IP }}:/opt/kanban-app/
+          scp -r migrations root@${{ env.DROPLET_IP }}:/opt/kanban-app/ || echo "No migrations directory"
+
+      - name: Create Environment File
+        run: |
+          ssh root@${{ env.DROPLET_IP }} "cat > /opt/kanban-app/.env << 'EOF'
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          FRONTEND_URLS=${{ vars.FRONTEND_URLS || 'http://localhost:3000' }}
+          ENVIRONMENT=production
+          PORT=8080
+          RUST_LOG=info
+          CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME || '' }}
+          CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY || '' }}
+          CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET || '' }}
+          EOF"
+
+      - name: Pull Latest Images and Deploy
+        run: |
+          ssh root@${{ env.DROPLET_IP }} "
+            cd /opt/kanban-app &&
+            docker-compose pull &&
+            docker-compose down &&
+            docker-compose up -d &&
+            docker system prune -f
+          "
+
+      - name: Wait for Service Startup
+        run: |
+          echo "Waiting for service to start..."
+          sleep 30
+
+      - name: Verify Deployment
+        run: |
+          # Check container status
+          echo "Checking container status:"
+          ssh root@${{ env.DROPLET_IP }} "docker-compose -f /opt/kanban-app/docker-compose.yml ps"
+
+          # Check container logs
+          echo "Checking container logs (last 20 lines):"
+          ssh root@${{ env.DROPLET_IP }} "docker-compose -f /opt/kanban-app/docker-compose.yml logs --tail 20 kanban-api"
+
+          # Health check with retry
+          echo "Performing health check:"
+          for i in {1..5}; do
+            if curl -sSf --connect-timeout 10 --max-time 30 http://${{ env.DROPLET_IP }}:8080/health; then
+              echo "Health check passed on attempt $i"
+              break
+            else
+              echo "Health check attempt $i failed, retrying in 10 seconds..."
+              sleep 10
+              if [ $i -eq 5 ]; then
+                echo "Health check failed after 5 attempts"
+                exit 1
+              fi
+            fi
+          done
+
+          echo "Deployment verification completed successfully!"
+
+      - name: Cleanup Old Images
+        if: always()
+        run: |
+          ssh root@${{ env.DROPLET_IP }} "
+            docker image prune -af --filter 'until=72h' || true
+          "
