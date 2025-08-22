@@ -1,0 +1,41 @@
+# Rust build directory
+/target/
+target/
+
+# Cargo lock file (uncomment if it's a library)
+Cargo.lock
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Debug files
+*.pdb
+
+# Generated documentation
+/doc/
+
+# Security files
+*.pem
+*.key
+
+# Db files
+# *.sql
+
+
+# Added by cargo
+
+/target
