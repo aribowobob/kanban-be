@@ -205,7 +205,7 @@ jobs:
           # Health check with retry
           echo "Performing health check:"
           for i in {1..5}; do
-            if curl -sSf --connect-timeout 10 --max-time 30 http://${{ env.DROPLET_IP }}:3000/health; then
+            if curl -sSf --connect-timeout 10 --max-time 30 http://${{ env.DROPLET_IP }}:8080/health; then
               echo "Health check passed on attempt $i"
               break
             else
