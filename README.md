@@ -12,17 +12,6 @@ A kanban board backend system built with Rust and Actix-web
 
 Run the `kanban_db.sql` script to create all tables and sample data.
 
-### Existing Database Migration
-
-If you have an existing database with the old `password_hash` column, run:
-
-```sql
--- Run this migration to rename the column
-ALTER TABLE users RENAME COLUMN password_hash TO password;
-```
-
-Or use the provided migration file: `migrate_password_column.sql`
-
 ## Features
 
 - REST API built with Actix-web
@@ -33,3 +22,21 @@ Or use the provided migration file: `migrate_password_column.sql`
 - OpenAPI/Swagger documentation (available only in development mode)
 - CORS support for frontend integration
 - Logging and monitoring capabilities
+
+## Required GitHub Secrets/Variables
+
+### Secrets:
+
+- DOCKER_USERNAME
+- DOCKER_PASSWORD
+- DROPLET_PASSWORD
+- DATABASE_URL
+- JWT_SECRET
+- CLOUDINARY_CLOUD_NAME
+- CLOUDINARY_API_KEY
+- CLOUDINARY_API_SECRET
+
+### Variables
+
+- DROPLET_IP
+- FRONTEND_URLS
