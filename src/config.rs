@@ -44,8 +44,8 @@ impl AppConfig {
             .map_err(|_| ConfigError::InvalidFormat("SERVER_PORT must be a valid port number".to_string()))?;
         
         // Parse allowed origins
-        let frontend_urls = env::var("CORS_ALLOWED_ORIGINS")
-            .unwrap_or_else(|_| "http://localhost:3001,https://kanban-fe.vercel.app".to_string())
+        let frontend_urls = env::var("FRONTEND_URLS")
+            .unwrap_or_else(|_| "http://localhost:3000,https://kanban-fe.vercel.app".to_string())
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
