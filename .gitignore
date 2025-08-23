@@ -2,9 +2,6 @@
 /target/
 target/
 
-# Cargo lock file (uncomment if it's a library)
-Cargo.lock
-
 # IDE specific files
 .idea/
 .vscode/
