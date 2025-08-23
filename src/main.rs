@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Result, middleware::Logger};
+use actix_web::{web, App, HttpServer, middleware::Logger};
 use actix_cors::Cors;
 use env_logger;
 use utoipa::OpenApi;
@@ -15,7 +15,7 @@ mod utils;
 
 use config::AppConfig;
 use database::Database;
-use handlers::{auth_config, task_config, file_config};
+use handlers::{auth_config, task_config, file_config, health};
 
 struct SecurityAddon;
 
@@ -94,40 +94,6 @@ impl Modify for SecurityAddon {
 )]
 struct ApiDoc;
 
-// Basic health check endpoint
-async fn health_check(db: web::Data<Database>) -> Result<HttpResponse> {
-    match db.health_check().await {
-        Ok(_) => {
-            let stats = db.get_stats().await.unwrap_or_else(|_| database::DatabaseStats {
-                users: 0,
-                teams: 0,
-                tasks: 0,
-                attachments: 0,
-            });
-
-            Ok(HttpResponse::Ok().json(serde_json::json!({
-                "status": "ok",
-                "message": "Kanban Backend API is running",
-                "database": "connected",
-                "stats": {
-                    "users": stats.users,
-                    "teams": stats.teams,
-                    "tasks": stats.tasks,
-                    "attachments": stats.attachments
-                }
-            })))
-        }
-        Err(e) => {
-            log::error!("Database health check failed: {}", e);
-            Ok(HttpResponse::ServiceUnavailable().json(serde_json::json!({
-                "status": "error",
-                "message": "Database connection failed",
-                "error": e.to_string()
-            })))
-        }
-    }
-}
-
 // API info endpoint
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -192,7 +158,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(db_data.clone())
             .wrap(cors)
             .wrap(Logger::default())
-            .route("/health", web::get().to(health_check))
+            .configure(health::configure)
             .configure(auth_config)
             .configure(task_config)
             .configure(file_config)
