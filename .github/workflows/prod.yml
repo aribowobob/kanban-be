@@ -162,7 +162,7 @@ jobs:
           sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "cat > /opt/kanban-app/.env << 'EOF'
           DATABASE_URL=${{ secrets.DATABASE_URL }}
           JWT_SECRET=${{ secrets.JWT_SECRET }}
-          FRONTEND_URLS=${{ vars.FRONTEND_URLS || 'http://localhost:3000' }}
+          FRONTEND_URLS=${{ vars.FRONTEND_URLS || 'https://dev.opense7en.com' }}
           ENVIRONMENT=production
           PORT=8080
           RUST_LOG=info
@@ -179,29 +179,32 @@ jobs:
           sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "
             cd /opt/kanban-app &&
             
-            # Install nginx and certbot if not present
-            apt-get update &&
-            apt-get install -y nginx certbot python3-certbot-nginx &&
+            # Backup SSL certificates if they exist
+            if [ -d /etc/letsencrypt/live/dev.opense7en.com ]; then
+              echo 'SSL certificates found - preserving during deployment'
+              CERT_EXISTS=true
+            else
+              echo 'No SSL certificates found - will generate new ones'
+              CERT_EXISTS=false
+            fi &&
             
-            # Stop nginx temporarily
-            systemctl stop nginx || true &&
-            
-            # Pull and start services
+            # Pull new images
             docker-compose pull &&
-            docker-compose down &&
-            docker-compose up -d &&
+            
+            # Graceful restart without removing volumes
+            docker-compose up -d --force-recreate &&
             
             # Wait for services to start
             sleep 15 &&
             
-            # Get SSL certificate (first time only)
-            if [ ! -f /etc/letsencrypt/live/dev.opense7en.com/fullchain.pem ]; then
-              echo 'Getting SSL certificate...'
+            # Generate SSL certificate only if it doesn't exist
+            if [ \"\$CERT_EXISTS\" = \"false\" ]; then
+              echo 'Generating SSL certificate for first time...'
               docker-compose --profile cert run --rm certbot || echo 'Certificate generation failed, will retry'
+              docker-compose restart nginx
+            else
+              echo 'SSL certificates already exist - skipping generation'
             fi &&
-            
-            # Restart nginx container to load certificates
-            docker-compose restart nginx &&
             
             # Clean up
             docker system prune -f
@@ -226,14 +229,14 @@ jobs:
           echo "Checking container logs (last 20 lines):"
           sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "docker-compose -f /opt/kanban-app/docker-compose.yml logs --tail 20 kanban-api"
 
-          # Health check with retry (HTTP first, then HTTPS)
+          # HTTPS-first health check
           echo "Performing health check:"
           for i in {1..5}; do
-            if curl -sSf --connect-timeout 10 --max-time 30 http://dev.opense7en.com/health; then
-              echo "HTTP health check passed on attempt $i"
-              break
-            elif curl -sSf --connect-timeout 10 --max-time 30 https://dev.opense7en.com/health; then
+            if curl -sSf --connect-timeout 10 --max-time 30 https://dev.opense7en.com/health; then
               echo "HTTPS health check passed on attempt $i"
+              break
+            elif curl -sSf --connect-timeout 10 --max-time 30 http://dev.opense7en.com/health; then
+              echo "HTTP health check passed on attempt $i (HTTPS may not be configured yet)"
               break
             else
               echo "Health check attempt $i failed, retrying in 10 seconds..."
