@@ -145,78 +145,6 @@ jobs:
           export SSHPASS=$SSH_PASSWORD
           sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "mkdir -p /opt/kanban-app"
 
-      - name: Configure Firewall
-        env:
-          SSH_PASSWORD: ${{ secrets.DROPLET_PASSWORD }}
-        run: |
-          export SSHPASS=$SSH_PASSWORD
-          sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "
-            # Check Ubuntu version and configure accordingly
-            UBUNTU_VERSION=\$(lsb_release -rs)
-            echo \"Configuring firewall for Ubuntu \$UBUNTU_VERSION\"
-            
-            # Ubuntu 25.04+ specific: Enable ICMP at kernel level
-            if [[ \"\$UBUNTU_VERSION\" > \"25.03\" ]]; then
-              echo 'Ubuntu 25.04+ detected - enabling ICMP at kernel level'
-              sysctl -w net.ipv4.icmp_echo_ignore_all=0
-              echo 'net.ipv4.icmp_echo_ignore_all=0' >> /etc/sysctl.conf
-              sysctl -p
-            fi
-            
-            # Check if UFW is available, otherwise use iptables
-            if command -v ufw >/dev/null 2>&1; then
-              echo 'Configuring firewall using UFW...'
-              ufw --force reset
-              ufw default deny incoming
-              ufw default allow outgoing
-              ufw allow ssh
-              ufw allow 8080/tcp
-              ufw allow icmp
-              ufw --force enable
-              ufw status verbose
-            else
-              echo 'UFW not found, configuring iptables directly...'
-              # Install iptables-persistent if not available
-              apt-get update && apt-get install -y iptables-persistent || true
-              
-              # Clear existing rules
-              iptables -F
-              iptables -X
-              iptables -t nat -F
-              iptables -t nat -X
-              
-              # Set default policies
-              iptables -P INPUT DROP
-              iptables -P FORWARD DROP
-              iptables -P OUTPUT ACCEPT
-              
-              # Allow loopback
-              iptables -A INPUT -i lo -j ACCEPT
-              
-              # Allow established connections
-              iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-              
-              # Allow SSH
-              iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-              
-              # Allow HTTP on port 8080
-              iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
-              
-              # Allow ICMP (ping)
-              iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
-              
-              # Save rules
-              iptables-save > /etc/iptables/rules.v4 || netfilter-persistent save || true
-              
-              # Show current rules
-              iptables -L -n -v
-            fi
-            
-            # Final verification
-            echo 'ICMP kernel setting:'
-            cat /proc/sys/net/ipv4/icmp_echo_ignore_all
-          "
-
       - name: Copy Application Files
         env:
           SSH_PASSWORD: ${{ secrets.DROPLET_PASSWORD }}
@@ -224,6 +152,25 @@ jobs:
           export SSHPASS=$SSH_PASSWORD
           sshpass -e scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no docker-compose.yml root@${{ env.DROPLET_IP }}:/opt/kanban-app/
           sshpass -e scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no -r migrations root@${{ env.DROPLET_IP }}:/opt/kanban-app/ || echo "No migrations directory"
+
+      - name: Enable ICMP (Ubuntu 25.04+ Fix)
+        env:
+          SSH_PASSWORD: ${{ secrets.DROPLET_PASSWORD }}
+        run: |
+          export SSHPASS=$SSH_PASSWORD
+          sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "
+            # Ubuntu 25.04+ specific: Enable ICMP at kernel level
+            UBUNTU_VERSION=\$(lsb_release -rs 2>/dev/null || echo '24.04')
+            echo \"Configuring for Ubuntu \$UBUNTU_VERSION\"
+            
+            if [[ \"\$UBUNTU_VERSION\" > \"25.03\" ]]; then
+              echo 'Ubuntu 25.04+ detected - enabling ICMP at kernel level'
+              sysctl -w net.ipv4.icmp_echo_ignore_all=0
+              echo 'net.ipv4.icmp_echo_ignore_all=0' >> /etc/sysctl.conf
+              sysctl -p
+              echo 'ICMP enabled at kernel level'
+            fi
+          "
 
       - name: Create Environment File
         env:
@@ -259,6 +206,26 @@ jobs:
         run: |
           echo "Waiting for service to start..."
           sleep 30
+
+      - name: Configure Firewall (Post-Docker)
+        env:
+          SSH_PASSWORD: ${{ secrets.DROPLET_PASSWORD }}
+        run: |
+          export SSHPASS=$SSH_PASSWORD
+          sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "
+            echo 'Configuring firewall after Docker setup...'
+            
+            # Allow ICMP using iptables (safe after Docker is running)
+            iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
+            iptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
+            
+            # Ensure port 8080 is accessible
+            iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
+            
+            # Show current iptables rules
+            echo 'Current iptables rules:'
+            iptables -L -n | head -20
+          "
 
       - name: Verify Deployment
         env:
