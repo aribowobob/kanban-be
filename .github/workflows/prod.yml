@@ -150,7 +150,8 @@ jobs:
           SSH_PASSWORD: ${{ secrets.DROPLET_PASSWORD }}
         run: |
           export SSHPASS=$SSH_PASSWORD
-          sshpass -e scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no docker-compose.yml root@${{ env.DROPLET_IP }}:/opt/kanban-app/
+          sshpass -e scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no docker-compose-ssl.yml root@${{ env.DROPLET_IP }}:/opt/kanban-app/docker-compose.yml
+          sshpass -e scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no nginx.conf root@${{ env.DROPLET_IP }}:/opt/kanban-app/
           sshpass -e scp -o ConnectTimeout=30 -o StrictHostKeyChecking=no -r migrations root@${{ env.DROPLET_IP }}:/opt/kanban-app/ || echo "No migrations directory"
 
       - name: Create Environment File
@@ -177,9 +178,32 @@ jobs:
           export SSHPASS=$SSH_PASSWORD
           sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "
             cd /opt/kanban-app &&
+            
+            # Install nginx and certbot if not present
+            apt-get update &&
+            apt-get install -y nginx certbot python3-certbot-nginx &&
+            
+            # Stop nginx temporarily
+            systemctl stop nginx || true &&
+            
+            # Pull and start services
             docker-compose pull &&
             docker-compose down &&
             docker-compose up -d &&
+            
+            # Wait for services to start
+            sleep 15 &&
+            
+            # Get SSL certificate (first time only)
+            if [ ! -f /etc/letsencrypt/live/dev.opense7en.com/fullchain.pem ]; then
+              echo 'Getting SSL certificate...'
+              docker-compose --profile cert run --rm certbot || echo 'Certificate generation failed, will retry'
+            fi &&
+            
+            # Restart nginx container to load certificates
+            docker-compose restart nginx &&
+            
+            # Clean up
             docker system prune -f
           "
 
@@ -202,11 +226,14 @@ jobs:
           echo "Checking container logs (last 20 lines):"
           sshpass -e ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no root@${{ env.DROPLET_IP }} "docker-compose -f /opt/kanban-app/docker-compose.yml logs --tail 20 kanban-api"
 
-          # Health check with retry
+          # Health check with retry (HTTP first, then HTTPS)
           echo "Performing health check:"
           for i in {1..5}; do
-            if curl -sSf --connect-timeout 10 --max-time 30 http://${{ env.DROPLET_IP }}:8080/health; then
-              echo "Health check passed on attempt $i"
+            if curl -sSf --connect-timeout 10 --max-time 30 http://dev.opense7en.com/health; then
+              echo "HTTP health check passed on attempt $i"
+              break
+            elif curl -sSf --connect-timeout 10 --max-time 30 https://dev.opense7en.com/health; then
+              echo "HTTPS health check passed on attempt $i"
               break
             else
               echo "Health check attempt $i failed, retrying in 10 seconds..."
